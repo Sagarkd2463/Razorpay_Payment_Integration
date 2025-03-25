@@ -1,38 +1,30 @@
-
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const mongoose = require('mongoose');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const orderModel = require('./models/Order');
+require('./database/db');
+require('dotenv');
 
 const app = express();
 
 const razorpay = new Razorpay({
-    key_id: "rzp_test_g6wCaV4ReXobCV",
-    key_secret: "KDKlmMsFeXbny0hAzXWL1PYC",
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-mongoose.connect('mongodb://127.0.0.1:27017/react_razorpay')
-.then(() => {
-    console.log('MongoDB Connected...');
-})
-.catch(() => {
-    console.log('Not Connected...');
-})
-
 app.use(cors({
-    origin:'http://localhost:3000',
-    methods:['GET', "POST"],
+    origin: 'http://localhost:3000',
+    methods: ['GET', "POST"],
 }));
 
 app.use(morgan("dev"));
 app.use(express.json());
-app.use(express.urlencoded({ extended: false}));
+app.use(express.urlencoded({ extended: false }));
 
-app.post('/payment/checkout', async(req, res) => {
-    const {name, amount} = req.body;
+app.post('/payment/checkout', async (req, res) => {
+    const { name, amount } = req.body;
 
     const order = await razorpay.orders.create({
         amount: Number(amount * 100),
@@ -41,33 +33,34 @@ app.post('/payment/checkout', async(req, res) => {
 
     await orderModel.create({
         order_id: order.id,
-        name:  name,
+        name: name,
         amount: amount,
     });
 
-    console.log({order});
-    res.json({order});
+    console.log({ order });
+    res.json({ order });
 });
 
-app.post('/payment/payment-verification', async(req, res) => {
-    const {razorpay_payment_id,  razorpay_order_id, razorpay_signature} = req.body;
+app.post('/payment/payment-verification', async (req, res) => {
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body;
 
-    const body_data = razorpay_order_id+"|"+razorpay_payment_id;
+    const body_data = razorpay_order_id + "|" + razorpay_payment_id;
 
-    const expect = crypto.createHmac('sha256', 'KDKlmMsFeXbny0hAzXWL1PYC').update(body_data).digest('hex');
+    const expect = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET).update(body_data).digest('hex');
 
     const isValid = expect === razorpay_signature;
-    if(isValid) {
-        await orderModel.findOne({order_id: razorpay_order_id}, {
+
+    if (isValid) {
+        await orderModel.findOne({ order_id: razorpay_order_id }, {
             $set: {
                 razorpay_payment_id, razorpay_order_id, razorpay_signature
             }
         })
         res.redirect(`http://localhost:3000/success?payment_id=${razorpay_payment_id}`);
-        return
+        return;
     } else {
         res.redirect('http://localhost:3000/failed');
-        return
+        return;
     }
 
 });
@@ -77,4 +70,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`App listening on port: ${PORT}`);
 });
-
